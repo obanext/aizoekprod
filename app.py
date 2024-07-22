@@ -7,12 +7,12 @@ import asyncio
 import logging
 import os
 
+app = Flask(__name__)
+
 app.secret_key = os.environ.get('SECRET_KEY')
 openai_api_key = os.environ.get('OPENAI_API_KEY')
 typesense_api_key = os.environ.get('TYPESENSE_API_KEY')
 typesense_api_url = os.environ.get('TYPESENSE_API_URL')
-
-app = Flask(__name__)
 
 openai.api_key = openai_api_key
 
