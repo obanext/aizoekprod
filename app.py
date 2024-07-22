@@ -4,10 +4,10 @@ import json
 import requests
 import aiohttp
 import asyncio
-import os
 import logging
+import os
 
-app.secret_key = os.environ.get['SECRET_KEY']
+app.secret_key = os.environ.get('SECRET_KEY')
 openai_api_key = os.environ.get('OPENAI_API_KEY')
 typesense_api_key = os.environ.get('TYPESENSE_API_KEY')
 typesense_api_url = os.environ.get('TYPESENSE_API_URL')
