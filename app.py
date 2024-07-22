@@ -4,11 +4,9 @@ import json
 import requests
 import aiohttp
 import asyncio
-import logging
 import os
 
 app = Flask(__name__)
-
 app.secret_key = os.environ.get('SECRET_KEY')
 openai_api_key = os.environ.get('OPENAI_API_KEY')
 typesense_api_key = os.environ.get('TYPESENSE_API_KEY')
@@ -19,8 +17,6 @@ openai.api_key = openai_api_key
 assistant_id_1 = 'asst_ejPRaNkIhjPpNHDHCnoI5zKY'
 assistant_id_2 = 'asst_mQ8PhYHrTbEvLjfH8bVXPisQ'
 assistant_id_3 = 'asst_NLL8P78p9kUuiq08vzoRQ7tn'
-
-logging.basicConfig(level=logging.INFO)
 
 class CustomEventHandler(openai.AssistantEventHandler):
     def __init__(self):
@@ -71,7 +67,6 @@ def extract_search_query(response):
     if search_marker in response:
         start_index = response.find(search_marker) + len(search_marker)
         search_query = response[start_index:].strip()
-        logging.info(f"Extracted search query: {search_query}")
         return search_query
     return None
 
@@ -80,7 +75,6 @@ def extract_comparison_query(response):
     if comparison_marker in response:
         start_index = response.find(comparison_marker) + len(comparison_marker)
         comparison_query = response[start_index:].strip()
-        logging.info(f"Extracted comparison query: {comparison_query}")
         return comparison_query
     return None
 
@@ -97,18 +91,7 @@ def parse_assistant_message(content):
     except json.JSONDecodeError:
         return None
 
-async def is_url_404(session, url):
-    async with session.head(url) as response:
-        return response.status == 404
-
-async def check_urls(urls):
-    async with aiohttp.ClientSession() as session:
-        tasks = [is_url_404(session, url) for url in urls]
-        return await asyncio.gather(*tasks)
-
 def perform_typesense_search(params):
-    logging.info(f"Performing Typesense search with parameters: {params}")
-    
     headers = {
         'Content-Type': 'application/json',
         'X-TYPESENSE-API-KEY': typesense_api_key,
@@ -137,12 +120,7 @@ def perform_typesense_search(params):
             } for hit in search_results["results"][0]["hits"]
         ]
 
-        urls = [f"https://zoeken.oba.nl/resolve.ashx?index=ppn&identifiers={result['ppn']}" for result in results]
-        url_checks = asyncio.run(check_urls(urls))
-        
-        valid_results = [results[i] for i in range(len(results)) if not url_checks[i]]
-
-        simplified_results = {"results": valid_results}
+        simplified_results = {"results": results}
         return simplified_results
     else:
         return {"error": response.status_code, "message": response.text}
@@ -175,7 +153,6 @@ def send_message():
         comparison_query = extract_comparison_query(response_text)
 
         if search_query:
-            logging.info(f"Query passed to Assistant 2: {search_query}")
             response_text_2, thread_id = call_assistant(assistant_id_2, search_query, thread_id)
             search_params = parse_assistant_message(response_text_2)
             if search_params:
@@ -184,7 +161,6 @@ def send_message():
             else:
                 return jsonify({'response': response_text_2, 'thread_id': thread_id})
         elif comparison_query:
-            logging.info(f"Query passed to Assistant 3: {comparison_query}")
             response_text_3, thread_id = call_assistant(assistant_id_3, comparison_query, thread_id)
             search_params = parse_assistant_message(response_text_3)
             if search_params:
@@ -213,7 +189,6 @@ def apply_filters():
         comparison_query = extract_comparison_query(response_text)
 
         if search_query:
-            logging.info(f"Query passed to Assistant 2 with filters: {search_query}")
             response_text_2, thread_id = call_assistant(assistant_id_2, search_query, thread_id)
             search_params = parse_assistant_message(response_text_2)
             if search_params:
@@ -222,7 +197,6 @@ def apply_filters():
             else:
                 return jsonify({'response': response_text_2, 'thread_id': thread_id})
         elif comparison_query:
-            logging.info(f"Query passed to Assistant 3 with filters: {comparison_query}")
             response_text_3, thread_id = call_assistant(assistant_id_3, comparison_query, thread_id)
             search_params = parse_assistant_message(response_text_3)
             if search_params:
@@ -236,7 +210,6 @@ def apply_filters():
         return jsonify({'error': str(e)}), 500
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
 
 @app.route('/reset', methods=['POST'])
 def reset():
@@ -256,10 +229,8 @@ def proxy_details():
     response = requests.get(url)
     
     if response.headers['Content-Type'] == 'application/json':
-        app.logger.info(f"Detail JSON Response: {response.json()}")
         return jsonify(response.json()), response.status_code, response.headers.items()
     else:
-        app.logger.error(f"Non-JSON Response: {response.text}")
         return response.text, response.status_code, response.headers.items()
 
 if __name__ == "__main__":
