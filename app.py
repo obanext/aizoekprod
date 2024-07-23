@@ -5,14 +5,23 @@ import requests
 import aiohttp
 import asyncio
 import os
+from pymongo import MongoClient
+from datetime import datetime
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY')
 openai_api_key = os.environ.get('OPENAI_API_KEY')
 typesense_api_key = os.environ.get('TYPESENSE_API_KEY')
 typesense_api_url = os.environ.get('TYPESENSE_API_URL')
+mongodb_uri = os.environ.get('MONGODB_URI')
 
 openai.api_key = openai_api_key
+
+# Setup MongoDB connection
+client = MongoClient(mongodb_uri)
+db = client['mydatabase']
+interactions_collection = db['interactions']
+messages_collection = db['messages']
 
 assistant_id_1 = 'asst_ejPRaNkIhjPpNHDHCnoI5zKY'
 assistant_id_2 = 'asst_mQ8PhYHrTbEvLjfH8bVXPisQ'
@@ -125,6 +134,26 @@ def perform_typesense_search(params):
     else:
         return {"error": response.status_code, "message": response.text}
 
+def log_interaction(thread_id, user_id, assistant_id, interaction_type):
+    interaction = {
+        "thread_id": thread_id,
+        "user_id": user_id,
+        "assistant_id": assistant_id,
+        "interaction_type": interaction_type,
+        "created_at": datetime.utcnow()
+    }
+    interaction_id = interactions_collection.insert_one(interaction).inserted_id
+    return interaction_id
+
+def log_message(interaction_id, sender, message):
+    message_doc = {
+        "interaction_id": interaction_id,
+        "sender": sender,
+        "message": message,
+        "created_at": datetime.utcnow()
+    }
+    messages_collection.insert_one(message_doc)
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -143,12 +172,18 @@ def start_thread():
 def send_message():
     try:
         data = request.json
+        user_id = "example_user"  # Pas dit aan naar jouw user ID logica
 
         thread_id = data['thread_id']
         user_input = data['user_input']
         assistant_id = data['assistant_id']
 
+        interaction_id = log_interaction(thread_id, user_id, assistant_id, 'search')
+        log_message(interaction_id, 'user', user_input)
+
         response_text, thread_id = call_assistant(assistant_id, user_input, thread_id)
+        log_message(interaction_id, 'assistant', response_text)
+
         search_query = extract_search_query(response_text)
         comparison_query = extract_comparison_query(response_text)
 
@@ -157,18 +192,23 @@ def send_message():
             search_params = parse_assistant_message(response_text_2)
             if search_params:
                 search_results = perform_typesense_search(search_params)
+                log_message(interaction_id, 'assistant', json.dumps(search_results))
                 return jsonify({'response': search_results, 'thread_id': thread_id})
             else:
+                log_message(interaction_id, 'assistant', response_text_2)
                 return jsonify({'response': response_text_2, 'thread_id': thread_id})
         elif comparison_query:
             response_text_3, thread_id = call_assistant(assistant_id_3, comparison_query, thread_id)
             search_params = parse_assistant_message(response_text_3)
             if search_params:
                 search_results = perform_typesense_search(search_params)
+                log_message(interaction_id, 'assistant', json.dumps(search_results))
                 return jsonify({'response': search_results, 'thread_id': thread_id})
             else:
+                log_message(interaction_id, 'assistant', response_text_3)
                 return jsonify({'response': response_text_3, 'thread_id': thread_id})
         else:
+            log_message(interaction_id, 'assistant', response_text)
             return jsonify({'response': response_text, 'thread_id': thread_id})
     except openai.error.OpenAIError as e:
         return jsonify({'error': str(e)}), 500
@@ -193,18 +233,23 @@ def apply_filters():
             search_params = parse_assistant_message(response_text_2)
             if search_params:
                 search_results = perform_typesense_search(search_params)
+                log_message(interaction_id, 'assistant', json.dumps(search_results))
                 return jsonify({'results': search_results['results'], 'thread_id': thread_id})
             else:
+                log_message(interaction_id, 'assistant', response_text_2)
                 return jsonify({'response': response_text_2, 'thread_id': thread_id})
         elif comparison_query:
             response_text_3, thread_id = call_assistant(assistant_id_3, comparison_query, thread_id)
             search_params = parse_assistant_message(response_text_3)
             if search_params:
                 search_results = perform_typesense_search(search_params)
+                log_message(interaction_id, 'assistant', json.dumps(search_results))
                 return jsonify({'results': search_results['results'], 'thread_id': thread_id})
             else:
+                log_message(interaction_id, 'assistant', response_text_3)
                 return jsonify({'response': response_text_3, 'thread_id': thread_id})
         else:
+            log_message(interaction_id, 'assistant', response_text)
             return jsonify({'response': response_text, 'thread_id': thread_id})
     except openai.error.OpenAIError as e:
         return jsonify({'error': str(e)}), 500
